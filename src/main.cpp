@@ -250,13 +250,10 @@ void setRestPositions() {
   updateLegCoordinates(300, leg6.x, leg6.y, leg6.z);
 }
 
-void movered(float moveAngle, float movemagnitude) {
-  // Convert the moveAngle to radians.
-  float rad = moveAngle;
-  
-  // Calculate movement vector components (scaled by fastnessMultiplier).
-  float dx = cos(rad) * movemagnitude * fastnessMultiplier;
-  float dy = sin(rad) * movemagnitude * fastnessMultiplier;
+void movered(float moveRad, float movemagnitude) {
+// Calculate movement vector components (scaled by fastnessMultiplier).
+  float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
+  float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
   
   // Define two leg groups:
   // Red group: legs 1, 3, 5
@@ -322,13 +319,10 @@ void movered(float moveAngle, float movemagnitude) {
   }
 }
 
-void moveblue(float moveAngle, float movemagnitude) {
-  // Convert the moveAngle to radians.
-  float rad = moveAngle;
-  
+void moveblue(float moveRad, float movemagnitude) {
   // Calculate movement vector components (scaled by fastnessMultiplier).
-  float dx = cos(rad) * movemagnitude * fastnessMultiplier;
-  float dy = sin(rad) * movemagnitude * fastnessMultiplier;
+  float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
+  float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
   
   // Define two leg groups:
   // Red group: legs 1, 3, 5
@@ -403,25 +397,25 @@ Dir controller(int x, int y) {
 }
 
 // switch leg logic with constraint and delay
-void movementXY(float moveAngle, float movemagnitude) {
+void movementXY(float moveRad, float movemagnitude) {
   if (legnowblue == false) {
-    movered(moveAngle, movemagnitude);
+    movered(moveRad, movemagnitude);
     delay(10); // stability
     Serial.println("Red moving");
     if (constraint == true) {
       legnowblue = true;
       constraint = false;
-      moveblue(moveAngle, movemagnitude);
+      moveblue(moveRad, movemagnitude);
       delay(transdur);
     }
   } else {
-    moveblue(moveAngle, movemagnitude);
+    moveblue(moveRad, movemagnitude);
     delay(10); // stability
     Serial.println("Blue moving");
     if (constraint == true) {
       legnowblue = false;
       constraint = false;
-      movered(moveAngle, movemagnitude);
+      movered(moveRad, movemagnitude);
       delay(transdur);
     }
   }
@@ -437,7 +431,7 @@ void loop() {
   PSXerror = psx.read(PSXdata);
 
   if(PSXerror == PSXERROR_SUCCESS) {
-  Serial.print("succes");
+  Serial.print("success");
   } else {
   Serial.print("No success reading data. Check connections and timing.");
   }
