@@ -1,3 +1,10 @@
+
+// MAJOR NOTE: DUE TO THE CONSTRAINT FUNCTION NOT BEING PROPERLY CONFIGURED, WHAT HAPPENS IS THAT THE HEXAPOD WILL RUN LEG
+// UPDATE CODE UNTIL A LEG HITS THE LIMIT. THIS CAUSES ALL THE NON UPDATED LEGS TO NOT PROCEED WITH UPDATES, BUT WONT REVERT
+// OLD LEG POSITIONS OTHER THEN TE LEG WHERE CONSTRAINT WAS REACHED.
+// THIS MEANS THAT THE HEXAPOD WILL HAVE TO BE SET BACK TO REST POSITION EVERY ONCE IN A WHILE TO PREVENT LEG DRIFT.
+
+
 #include <SPI.h>
 #include <math.h>
 #include <Wire.h>
@@ -70,12 +77,12 @@ const double legOffset = 9.83;  // From center of hexapod
 Leg leg1, leg2, leg3, leg4, leg5, leg6;
 
 // Adjustable variables
-const float REST_DISTANCE = 25.0;   // Distance from center for rest position (adjust as needed)
-const float GROUND_Z = -12.0;          // Z coordinate for legs on the ground
-const float AIR_Z = -5.0;            // Z coordinate for legs in the air
+const float REST_DISTANCE = 17.0;   // Distance from center for rest position (adjust as needed)
+const float GROUND_Z = -8.0;          // Z coordinate for legs on the ground
+const float AIR_Z = 0.0;            // Z coordinate for legs in the air
 // this is calculated with the magnitude function range of 0-2, the units in cm
 // the speed at dx and dy is updated is in 10ms, therefore to get speed of 0-2 cm/s this must be 0.01
-float fastnessMultiplier = 0.01;      // multiplier
+float fastnessMultiplier = 0.1;      // multiplier
 bool legnowblue = false;
 bool constraint = false;
 int transdur = 200; // time taken to transition in ms
@@ -105,56 +112,72 @@ void UpdatePosition(int leg, double A1, double A2, double A3) {
   A1 = translator(180 - A1);
   A2 = translator(A2);
   A3 = translator(180 - A3);
-  if (leg == 0) {
-    pwm1.setPWM(SERVO_PINFR1, 0, A1);
-    pwm1.setPWM(SERVO_PINFR2, 0, A2);
-    pwm1.setPWM(SERVO_PINFR3, 0, A3);
-  } else if ( leg == 1) {
-    pwm1.setPWM(SERVO_PINCR1, 0, A1);
-    pwm1.setPWM(SERVO_PINCR2, 0, A2);
-    pwm1.setPWM(SERVO_PINCR3, 0, A3);
-  } else if (leg == 2) {
-    pwm1.setPWM(SERVO_PINBR1, 0, A1);
-    pwm1.setPWM(SERVO_PINBR2, 0, A2);
-    pwm1.setPWM(SERVO_PINBR3, 0, A3);
-  } else if (leg == 3) {
-    pwm2.setPWM(SERVO_PINFL1, 0, A1);
-    pwm2.setPWM(SERVO_PINFL2, 0, A2);
-    pwm2.setPWM(SERVO_PINFL3, 0, A3);
-  } else if (leg == 4) {
-    pwm2.setPWM(SERVO_PINCL1, 0, A1);
-    pwm2.setPWM(SERVO_PINCL2, 0, A2);
-    pwm2.setPWM(SERVO_PINCL3, 0, A3);
-  } else if (leg == 5 ) {
-    pwm2.setPWM(SERVO_PINBL1, 0, A1);
-    pwm2.setPWM(SERVO_PINBL2, 0, A2);
-    pwm2.setPWM(SERVO_PINBL3, 0, A3);
-  }
+  //Serial.println(leg);
+  switch (leg) {
+    case  0:
+      pwm1.setPWM(SERVO_PINFR1, 0, A1);
+      pwm1.setPWM(SERVO_PINFR2, 0, A2);
+      pwm1.setPWM(SERVO_PINFR3, 0, A3);
+      //Serial.println("leg 0");
+      break;
+    case  1:
+      pwm1.setPWM(SERVO_PINCR1, 0, A1);
+      pwm1.setPWM(SERVO_PINCR2, 0, A2);
+      pwm1.setPWM(SERVO_PINCR3, 0, A3);
+      //Serial.println("leg 1");
+      break;
+    case 2:
+      pwm1.setPWM(SERVO_PINBR1, 0, A1);
+      pwm1.setPWM(SERVO_PINBR2, 0, A2);
+      pwm1.setPWM(SERVO_PINBR3, 0, A3);
+      //Serial.println("leg 2");
+      break;
+    case 3:
+      pwm2.setPWM(SERVO_PINFL1, 0, A1);
+      pwm2.setPWM(SERVO_PINFL2, 0, A2);
+      pwm2.setPWM(SERVO_PINFL3, 0, A3);
+      //Serial.println("leg 3");
+      break;
+    case 4:
+      pwm2.setPWM(SERVO_PINCL1, 0, A1);
+      pwm2.setPWM(SERVO_PINCL2, 0, A2);
+      pwm2.setPWM(SERVO_PINCL3, 0, A3);
+      ///Serial.println("leg 4");
+      break;
+    case 5:
+      pwm2.setPWM(SERVO_PINBL1, 0, A1);
+      pwm2.setPWM(SERVO_PINBL2, 0, A2);
+      pwm2.setPWM(SERVO_PINBL3, 0, A3);
+      //Serial.println("leg 5");
+      break;
+    default:
+      break;
+  } 
 }
 
 // constraint values for when a motor has went too far, also switches the leg groups
 void constraintReached(double servo1, double servo2, double servo3) {
-  if (servo1 > 120 || servo2 > 100 || servo3 > 90 || servo1 < 30 || servo2 < 40 || servo3 < 0) {
+  if (servo1 > 120 || servo2 > 180 || servo3 > 100 || servo1 < 30 || servo2 < 110 || servo3 < 44) {
     constraint = true;
+    Serial.println("----------constraint Tripped----------");
   }
 }
 
-void CoordinateToAngle(int leg, double X, double Y, double Z) {
+void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
 
-  // Target struct shii
   Angle target;
 
   // Calculate the length of the hypotenuse
-  double N = sqrt((Z * Z) + (X * X)) - D;
-  double L = sqrt((Y * Y) + (N * N));
+  double N = sqrt((Y * Y) + (X * X)) - D;
+  double L = sqrt((Z * Z) + (N * N));
 
-  target.A1 = atan2(Z,X) * (180 / PI) + 90;
+  target.A1 = atan2(Y,X) * (180 / PI) + 90;
 
 
   // Calculate the angles using inverse kinematics
   target.A3 = acos(((J2L * J2L) + (J3L * J3L) - (L * L)) / (2 * J2L * J3L)) * (180 / PI);
   double B = acos(((L * L) + (J2L * J2L) - (J3L * J3L)) / (2 * L * J2L)) * (180 / PI);
-  double A = atan2(Y, N) * (180 / PI);
+  double A = atan2(Z, N) * (180 / PI);
   target.A2 = A + B + 90;
 
 
@@ -162,17 +185,21 @@ void CoordinateToAngle(int leg, double X, double Y, double Z) {
   target.A2 = 360 - target.A2;
   }
 
-  if (constraint == false) {
-    UpdatePosition(leg, target.A1, target.A2, target.A3);
+  if (!legInAir) {
+    constraintReached(target.A1, target.A2, target.A3);
   }
-
-  constraintReached(target.A1, target.A2, target.A3);
-  Serial.print("A1 : ");
+  Serial.print("Leg : ");
+  Serial.print(leg);
+  Serial.print(" A1 : ");
   Serial.print(target.A1);
   Serial.print(" A2 : ");
   Serial.print(target.A2);
   Serial.print(" A3 : ");
   Serial.println(target.A3);
+
+  if (!constraint) {
+    UpdatePosition(leg, target.A1, target.A2, target.A3);
+      }
 }
 
 Leg worldToLocal(const Leg &world, double legAngleDeg, double offset) {
@@ -181,34 +208,32 @@ Leg worldToLocal(const Leg &world, double legAngleDeg, double offset) {
   // Convert leg angle from degrees to radians
   double legAngleRad = legAngleDeg * DEG_TO_RAD;
   
-  // Remove translation due to leg offset
-  double X = world.x - (offset * cos(legAngleRad));
-  double Z = world.z - (offset * sin(legAngleRad));
-  
-  // Apply correct inverse rotation
-  local.x = X * cos(legAngleRad) - Z * sin(legAngleRad);
-  local.z = X * sin(legAngleRad) + Z * cos(legAngleRad);
+  // X Y Logic
+  local.x = (world.x  * cos(legAngleRad)) + (world.y  * sin(legAngleRad));
+  local.y = -(world.x  * sin(legAngleRad)) + (world.y  * cos(legAngleRad));
   
   // Y remains unchanged
-  local.y = world.y;
+  local.z = world.z;
   
   return local;
 }
 
-void updateLegCoordinates(double legAngleDeg, double x, double y, double z) {
+void updateLegCoordinates(int legAngleDeg, double x, double y, double z, bool legInAir) {
   Leg worldLegPos = { x, y, z };  // World coordinates
   Leg localCoord = worldToLocal(worldLegPos, legAngleDeg, legOffset);
   int leg = legAngleDeg / 60; // this is range 0-5
-  Serial.print("Leg (Angle ");
-  Serial.print(legAngleDeg);
-  Serial.print("°): ");
-  Serial.print("Local X: ");
-  Serial.print(localCoord.x, 6); // Print with higher precision
-  Serial.print(" Y: ");
-  Serial.print(localCoord.y, 6);
-  Serial.print(" Z: ");
-  Serial.println(localCoord.z, 6);
-  CoordinateToAngle(leg, localCoord.x, localCoord.y, localCoord.z);
+  // Serial.print("Leg (Angle ");
+  // Serial.print(legAngleDeg);
+  // Serial.print("°, Leg: ");
+  // Serial.print(leg);
+  // Serial.print(") ");
+  // Serial.print("Local X: ");
+  // Serial.print(localCoord.x, 6); // Print with higher precision
+  // Serial.print(" Y: ");
+  // Serial.print(localCoord.y, 6);
+  // Serial.print(" Z: ");
+  // Serial.println(localCoord.z, 6);
+  CoordinateToAngle(leg, localCoord.x, localCoord.y, localCoord.z, legInAir);
 }
 
 // Function to set legs to their rest positions.
@@ -240,17 +265,25 @@ void setRestPositions() {
   leg4.z = GROUND_Z;
   leg5.z = GROUND_Z;
   leg6.z = GROUND_Z;
+  // Serial.println("within reset postion function (leg: 1, 2, ...)");
+  // Serial.print("Z :"); Serial.print(leg1.z); Serial.print(" "); Serial.print(leg2.z); Serial.print(" "); Serial.print(leg3.z);
+  // Serial.print(" "); Serial.print(leg4.z); Serial.print(" "); Serial.print(leg5.z); Serial.print(" "); Serial.println(leg6.z);
+  // Serial.print("X :"); Serial.print(leg1.x); Serial.print(" "); Serial.print(leg2.x); Serial.print(" "); Serial.print(leg3.x);
+  // Serial.print(" "); Serial.print(leg4.x); Serial.print(" "); Serial.print(leg5.x); Serial.print(" "); Serial.println(leg6.x);
+  // Serial.print("Y :"); Serial.print(leg1.y); Serial.print(" "); Serial.print(leg2.y); Serial.print(" "); Serial.print(leg3.y);
+  // Serial.print(" "); Serial.print(leg4.y); Serial.print(" "); Serial.print(leg5.y); Serial.print(" "); Serial.println(leg6.y);
 
   // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z);
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
 }
 
 void movered(float moveRad, float movemagnitude) {
+  constraint = false;
 // Calculate movement vector components (scaled by fastnessMultiplier).
   float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
   float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
@@ -287,12 +320,12 @@ void movered(float moveRad, float movemagnitude) {
   leg6.z = AIR_Z;
 
   // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z);
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, true);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, true);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, true);
 
   // reset amount servo coordinate back after constraint reached
   if (constraint == true) {
@@ -320,6 +353,7 @@ void movered(float moveRad, float movemagnitude) {
 }
 
 void moveblue(float moveRad, float movemagnitude) {
+  constraint = false;
   // Calculate movement vector components (scaled by fastnessMultiplier).
   float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
   float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
@@ -356,12 +390,12 @@ void moveblue(float moveRad, float movemagnitude) {
   leg6.z = GROUND_Z;
 
   // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z);
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, true);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, true);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
 
   // reset amount servo coordinate back after constraint reached
   if (constraint == true) {
@@ -401,8 +435,8 @@ void movementXY(float moveRad, float movemagnitude) {
   if (legnowblue == false) {
     movered(moveRad, movemagnitude);
     delay(10); // stability
-    Serial.println("Red moving");
-    if (constraint == true) {
+    //Serial.println("Red moving");
+    if (constraint) {
       legnowblue = true;
       constraint = false;
       moveblue(moveRad, movemagnitude);
@@ -411,8 +445,8 @@ void movementXY(float moveRad, float movemagnitude) {
   } else {
     moveblue(moveRad, movemagnitude);
     delay(10); // stability
-    Serial.println("Blue moving");
-    if (constraint == true) {
+    //Serial.println("Blue moving");
+    if (constraint) {
       legnowblue = false;
       constraint = false;
       movered(moveRad, movemagnitude);
@@ -431,9 +465,9 @@ void loop() {
   PSXerror = psx.read(PSXdata);
 
   if(PSXerror == PSXERROR_SUCCESS) {
-  Serial.print("success");
+  //Serial.print("success");
   } else {
-  Serial.print("No success reading data. Check connections and timing.");
+  //Serial.print("No success reading data. Check connections and timing.");
   }
 
   int LeftX = PSXdata.JoyLeftX - 128;
@@ -442,10 +476,10 @@ void loop() {
   int RightY= PSXdata.JoyRightY - 128;
   //end psx
 
-  Serial.print("test controller LeftX: ");
-  Serial.print(LeftX);
-  Serial.print(" LeftY: ");
-  Serial.println(LeftY);
+  //Serial.print("test controller LeftX: ");
+  //Serial.print(LeftX);
+  //Serial.print(" LeftY: ");
+  //Serial.println(LeftY);
   if (abs(LeftX) + abs(LeftY) < 15) {
     setRestPositions();
     delay(transdur);
