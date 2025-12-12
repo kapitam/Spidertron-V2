@@ -1,9 +1,4 @@
-
-// MAJOR NOTE: DUE TO THE CONSTRAINT FUNCTION NOT BEING PROPERLY CONFIGURED, WHAT HAPPENS IS THAT THE HEXAPOD WILL RUN LEG
-// UPDATE CODE UNTIL A LEG HITS THE LIMIT. THIS CAUSES ALL THE NON UPDATED LEGS TO NOT PROCEED WITH UPDATES, BUT WONT REVERT
-// OLD LEG POSITIONS OTHER THEN TE LEG WHERE CONSTRAINT WAS REACHED.
-// THIS MEANS THAT THE HEXAPOD WILL HAVE TO BE SET BACK TO REST POSITION EVERY ONCE IN A WHILE TO PREVENT LEG DRIFT.
-
+// SPLIT UP CODE INTO BITE SIZES
 
 #include <SPI.h>
 #include <math.h>
@@ -11,86 +6,14 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <PSX.h>
 
-#define DATA_PIN   25   // White wire
-#define CMD_PIN    26  // Black wire
-#define ATT_PIN    32  // Gray wire
-#define CLOCK_PIN  33  // black wire
-
-//Assign Servo on PWM adafruit
-#define SERVO_PINFR1 0
-#define SERVO_PINFR2 1
-#define SERVO_PINFR3 2
-#define SERVO_PINCR1 4
-#define SERVO_PINCR2 5
-#define SERVO_PINCR3 6
-#define SERVO_PINBR1 8
-#define SERVO_PINBR2 9
-#define SERVO_PINBR3 10
-#define SERVO_PINFL1 0
-#define SERVO_PINFL2 1
-#define SERVO_PINFL3 2
-#define SERVO_PINCL1 4
-#define SERVO_PINCL2 5
-#define SERVO_PINCL3 6
-#define SERVO_PINBL1 8
-#define SERVO_PINBL2 9
-#define SERVO_PINBL3 10
-
-const int minPulse = 450;
-const int maxPulse = 2500; 
-
-Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x40);
-Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x41);
-
-PSX psx;
-
-// Variables to hold the controller state and error code
-PSX::PSXDATA PSXdata;
-int PSXerror;
-
-// Struct for leg coordinates
-struct Leg {
-  double x;
-  double y;
-  double z;
-};
-
-// Struct for leg angles
-struct Angle {
-  float A1;
-  float A2;
-  float A3;
-};
-
-// Struct Direction and Mag
-struct Dir {
-  double mag;
-  double rad;
-};
-
-const double J2L = 10.7;  // Length of the femur
-const double J3L = 16.8;  // Length of the tibia
-const double D = 6.5;     // Offset length from the start of femur to axis
-const double legOffset = 9.83;  // From center of hexapod
-
-// Global leg objects labeled leg1 ... leg6
-Leg leg1, leg2, leg3, leg4, leg5, leg6;
-
-// Adjustable variables
-const float REST_DISTANCE = 17.0;   // Distance from center for rest position (adjust as needed)
-const float GROUND_Z = -8.0;          // Z coordinate for legs on the ground
-const float AIR_Z = 0.0;            // Z coordinate for legs in the air
-// this is calculated with the magnitude function range of 0-2, the units in cm
-// the speed at dx and dy is updated is in 10ms, therefore to get speed of 0-2 cm/s this must be 0.01
-float fastnessMultiplier = 0.1;      // multiplier
-bool legnowblue = false;
-bool constraint = false;
-int transdur = 200; // time taken to transition in ms
+#include <servoPins.h>
+#include <controller.h>
+#include <logicStruct.h>
+#include <logicVaribles.h>
+#include "servoMovement.cpp"
 
 void setup() {
   Serial.begin(115200);
-
-  Serial.println("Begin");
 
   psx.setupPins(DATA_PIN, CMD_PIN, ATT_PIN, CLOCK_PIN, 10);
   psx.config(PSXMODE_ANALOG);
@@ -99,60 +22,8 @@ void setup() {
   pwm1.setPWMFreq(50);
   pwm2.begin();
   pwm2.setPWMFreq(50);
-}
 
-double translator(double angle) {
-  double temp = minPulse + (angle / 180.0) * (maxPulse - minPulse);
-  return temp * 4096 / (1000000 / 50); // Convert to PWM ticks
-}
-
-void UpdatePosition(int leg, double A1, double A2, double A3) {
-  
-  // translate leg angles into servo angles
-  A1 = translator(180 - A1);
-  A2 = translator(A2);
-  A3 = translator(180 - A3);
-  //Serial.println(leg);
-  switch (leg) {
-    case  0:
-      pwm1.setPWM(SERVO_PINFR1, 0, A1);
-      pwm1.setPWM(SERVO_PINFR2, 0, A2);
-      pwm1.setPWM(SERVO_PINFR3, 0, A3);
-      //Serial.println("leg 0");
-      break;
-    case  1:
-      pwm1.setPWM(SERVO_PINCR1, 0, A1);
-      pwm1.setPWM(SERVO_PINCR2, 0, A2);
-      pwm1.setPWM(SERVO_PINCR3, 0, A3);
-      //Serial.println("leg 1");
-      break;
-    case 2:
-      pwm1.setPWM(SERVO_PINBR1, 0, A1);
-      pwm1.setPWM(SERVO_PINBR2, 0, A2);
-      pwm1.setPWM(SERVO_PINBR3, 0, A3);
-      //Serial.println("leg 2");
-      break;
-    case 3:
-      pwm2.setPWM(SERVO_PINFL1, 0, A1);
-      pwm2.setPWM(SERVO_PINFL2, 0, A2);
-      pwm2.setPWM(SERVO_PINFL3, 0, A3);
-      //Serial.println("leg 3");
-      break;
-    case 4:
-      pwm2.setPWM(SERVO_PINCL1, 0, A1);
-      pwm2.setPWM(SERVO_PINCL2, 0, A2);
-      pwm2.setPWM(SERVO_PINCL3, 0, A3);
-      ///Serial.println("leg 4");
-      break;
-    case 5:
-      pwm2.setPWM(SERVO_PINBL1, 0, A1);
-      pwm2.setPWM(SERVO_PINBL2, 0, A2);
-      pwm2.setPWM(SERVO_PINBL3, 0, A3);
-      //Serial.println("leg 5");
-      break;
-    default:
-      break;
-  } 
+  Wire.begin(SDA_PIN, SCL_PIN);  // Initialize I2C
 }
 
 // constraint values for when a motor has went too far, also switches the leg groups
@@ -162,6 +33,7 @@ void constraintReached(double servo1, double servo2, double servo3) {
     Serial.println("----------constraint Tripped----------");
   }
 }
+
 
 void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
 
@@ -200,6 +72,48 @@ void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
   if (!constraint) {
     UpdatePosition(leg, target.A1, target.A2, target.A3);
       }
+}
+
+
+// Pure IK validator that computes angles but does NOT command servos.
+// Returns true if the computed angles are within allowed ranges (i.e. no constraint tripped).
+bool computeAnglesInternal(int leg, double X, double Y, double Z, Angle &target, bool legInAir) {
+  // Calculate the length of the hypotenuse
+  double N = sqrt((Y * Y) + (X * X)) - D;
+  double L = sqrt((Z * Z) + (N * N));
+
+  target.A1 = atan2(Y, X) * (180 / PI) + 90;
+
+  // Defensive clamping for acos arguments to avoid NaN from FP errors
+  double acos3_arg = ((J2L * J2L) + (J3L * J3L) - (L * L)) / (2 * J2L * J3L);
+  if (acos3_arg > 1.0) acos3_arg = 1.0;
+  if (acos3_arg < -1.0) acos3_arg = -1.0;
+  target.A3 = acos(acos3_arg) * (180 / PI);
+
+  double acosB_arg = 0.0;
+  if (L > 1e-8) {
+    acosB_arg = ((L * L) + (J2L * J2L) - (J3L * J3L)) / (2 * L * J2L);
+    if (acosB_arg > 1.0) acosB_arg = 1.0;
+    if (acosB_arg < -1.0) acosB_arg = -1.0;
+  } else {
+    // Degenerate case: set a safe default to avoid division by zero
+    acosB_arg = 1.0;
+  }
+  double B = acos(acosB_arg) * (180 / PI);
+  double A = atan2(Z, N) * (180 / PI);
+  target.A2 = A + B + 90;
+
+  if (target.A2 > 180) {
+    target.A2 = 360 - target.A2;
+  }
+
+  // If the leg is considered on the ground, run constraint checks (same as original behavior)
+  if (!legInAir) {
+    constraintReached(target.A1, target.A2, target.A3);
+  }
+
+  // Return success if no constraint was tripped
+  return !constraint;
 }
 
 Leg worldToLocal(const Leg &world, double legAngleDeg, double offset) {
@@ -283,142 +197,105 @@ void setRestPositions() {
 }
 
 void movered(float moveRad, float movemagnitude) {
-  constraint = false;
-// Calculate movement vector components (scaled by fastnessMultiplier).
+  // Do not reset constraint here; only validate new positions first
+  // Calculate movement vector components (scaled by fastnessMultiplier).
   float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
   float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
-  
-  // Define two leg groups:
-  // Red group: legs 1, 3, 5
-  leg1.x -= dx;
-  leg1.y -= dy;
-  
-  leg3.x -= dx;
-  leg3.y -= dy;
-  
-  leg5.x -= dx;
-  leg5.y -= dy;
-  
-  // Blue group: legs 2, 4, 6
-  leg2.x += dx;
-  leg2.y += dy;
-  
-  leg4.x += dx;
-  leg4.y += dy;
-  
-  leg6.x += dx;
-  leg6.y += dy;
-  
-  // Red group (on ground)
-  leg1.z = GROUND_Z;
-  leg3.z = GROUND_Z;
-  leg5.z = GROUND_Z;
-  
-  // Blue group (in air)
-  leg2.z = AIR_Z;
-  leg4.z = AIR_Z;
-  leg6.z = AIR_Z;
 
-  // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, true);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, true);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, true);
+  // Create tentative positions (do not modify globals yet)
+  Leg t1 = leg1; 
+  Leg t2 = leg2; 
+  Leg t3 = leg3; 
+  Leg t4 = leg4; 
+  Leg t5 = leg5; 
+  Leg t6 = leg6;
 
-  // reset amount servo coordinate back after constraint reached
-  if (constraint == true) {
-    // Define two leg groups:
-    // Red group: legs 1, 3, 5
-    leg1.x += dx;
-    leg1.y += dy;
-    
-    leg3.x += dx;
-    leg3.y += dy;
-    
-    leg5.x += dx;
-    leg5.y += dy;
-    
-    // Blue group: legs 2, 4, 6
-    leg2.x -= dx;
-    leg2.y -= dy;
-    
-    leg4.x -= dx;
-    leg4.y -= dy;
-    
-    leg6.x -= dx;
-    leg6.y -= dy;
+  // Apply deltas to tentative positions
+  t1.x -= dx; t1.y -= dy; t1.z = GROUND_Z; // red on ground
+  t3.x -= dx; t3.y -= dy; t3.z = GROUND_Z;
+  t5.x -= dx; t5.y -= dy; t5.z = GROUND_Z;
+
+  t2.x += dx; t2.y += dy; t2.z = AIR_Z; // blue in air
+  t4.x += dx; t4.y += dy; t4.z = AIR_Z;
+  t6.x += dx; t6.y += dy; t6.z = AIR_Z;
+
+  // Validate all six legs using computeAnglesInternal before committing any servo writes
+  Angle a1, a2, a3, a4, a5, a6;
+  // Temporarily clear constraint flag; computeAnglesInternal will set it if needed
+  bool prevConstraint = constraint;
+  constraint = false;
+  bool ok1 = computeAnglesInternal(0, t1.x, t1.y, t1.z, a1, false);
+  bool ok2 = computeAnglesInternal(1, t2.x, t2.y, t2.z, a2, true);
+  bool ok3 = computeAnglesInternal(2, t3.x, t3.y, t3.z, a3, false);
+  bool ok4 = computeAnglesInternal(3, t4.x, t4.y, t4.z, a4, true);
+  bool ok5 = computeAnglesInternal(4, t5.x, t5.y, t5.z, a5, false);
+  bool ok6 = computeAnglesInternal(5, t6.x, t6.y, t6.z, a6, true);
+
+  bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
+
+  if (allOk) {
+    // commit tentative positions and apply servo updates
+    leg1 = t1; leg2 = t2; leg3 = t3; leg4 = t4; leg5 = t5; leg6 = t6;
+    UpdatePosition(0, a1.A1, a1.A2, a1.A3);
+    UpdatePosition(1, a2.A1, a2.A2, a2.A3);
+    UpdatePosition(2, a3.A1, a3.A2, a3.A3);
+    UpdatePosition(3, a4.A1, a4.A2, a4.A3);
+    UpdatePosition(4, a5.A1, a5.A2, a5.A3);
+    UpdatePosition(5, a6.A1, a6.A2, a6.A3);
+  } else {
+    // If validation failed, restore previous constraint state and do not change positions
+    constraint = true; // signal that a move was rejected
+    // Keep global legs unchanged (no partial movement)
   }
 }
 
 void moveblue(float moveRad, float movemagnitude) {
-  constraint = false;
   // Calculate movement vector components (scaled by fastnessMultiplier).
   float dx = cos(moveRad) * movemagnitude * fastnessMultiplier;
   float dy = sin(moveRad) * movemagnitude * fastnessMultiplier;
-  
-  // Define two leg groups:
-  // Red group: legs 1, 3, 5
-  leg1.x += dx;
-  leg1.y += dy;
-  
-  leg3.x += dx;
-  leg3.y += dy;
-  
-  leg5.x += dx;
-  leg5.y += dy;
-  
-  // Blue group: legs 2, 4, 6
-  leg2.x -= dx;
-  leg2.y -= dy;
-  
-  leg4.x -= dx;
-  leg4.y -= dy;
-  
-  leg6.x -= dx;
-  leg6.y -= dy;
-  
-  // Red group (on ground)
-  leg1.z = AIR_Z;
-  leg3.z = AIR_Z;
-  leg5.z = AIR_Z;
-  
-  // Blue group (in air)
-  leg2.z = GROUND_Z;
-  leg4.z = GROUND_Z;
-  leg6.z = GROUND_Z;
 
-  // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, true);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, true);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+  // Create tentative positions (do not modify globals yet)
+  Leg t1 = leg1; 
+  Leg t2 = leg2; 
+  Leg t3 = leg3; 
+  Leg t4 = leg4; 
+  Leg t5 = leg5; 
+  Leg t6 = leg6;
 
-  // reset amount servo coordinate back after constraint reached
-  if (constraint == true) {
-    // Define two leg groups:
-    // Red group: legs 1, 3, 5
-    leg1.x -= dx;
-    leg1.y -= dy;
-    
-    leg3.x -= dx;
-    leg3.y -= dy;
-    
-    leg5.x -= dx;
-    leg5.y -= dy;
-    
-    // Blue group: legs 2, 4, 6
-    leg2.x += dx;
-    leg2.y += dy;
-    
-    leg4.x += dx;
-    leg4.y += dy;
-    
-    leg6.x += dx;
-    leg6.y += dy;
+  // Apply deltas to tentative positions (reverse signs from movered)
+  t1.x += dx; t1.y += dy; t1.z = AIR_Z; // red in air
+  t3.x += dx; t3.y += dy; t3.z = AIR_Z;
+  t5.x += dx; t5.y += dy; t5.z = AIR_Z;
+
+  t2.x -= dx; t2.y -= dy; t2.z = GROUND_Z; // blue on ground
+  t4.x -= dx; t4.y -= dy; t4.z = GROUND_Z;
+  t6.x -= dx; t6.y -= dy; t6.z = GROUND_Z;
+
+  // Validate all six legs using computeAnglesInternal before committing any servo writes
+  Angle a1, a2, a3, a4, a5, a6;
+  bool prevConstraint = constraint;
+  constraint = false;
+  bool ok1 = computeAnglesInternal(0, t1.x, t1.y, t1.z, a1, true);
+  bool ok2 = computeAnglesInternal(1, t2.x, t2.y, t2.z, a2, false);
+  bool ok3 = computeAnglesInternal(2, t3.x, t3.y, t3.z, a3, true);
+  bool ok4 = computeAnglesInternal(3, t4.x, t4.y, t4.z, a4, false);
+  bool ok5 = computeAnglesInternal(4, t5.x, t5.y, t5.z, a5, true);
+  bool ok6 = computeAnglesInternal(5, t6.x, t6.y, t6.z, a6, false);
+
+  bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
+
+  if (allOk) {
+    // commit tentative positions and apply servo updates
+    leg1 = t1; leg2 = t2; leg3 = t3; leg4 = t4; leg5 = t5; leg6 = t6;
+    UpdatePosition(0, a1.A1, a1.A2, a1.A3);
+    UpdatePosition(1, a2.A1, a2.A2, a2.A3);
+    UpdatePosition(2, a3.A1, a3.A2, a3.A3);
+    UpdatePosition(3, a4.A1, a4.A2, a4.A3);
+    UpdatePosition(4, a5.A1, a5.A2, a5.A3);
+    UpdatePosition(5, a6.A1, a6.A2, a6.A3);
+  } else {
+    // If validation failed, restore previous constraint state and do not change positions
+    constraint = true; // signal that a move was rejected
   }
 }
 

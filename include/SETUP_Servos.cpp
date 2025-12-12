@@ -1,3 +1,6 @@
+// THIS FILE IS USED DURING SERVO SETUP
+
+
 #include <Adafruit_PWMServoDriver.h>
 
 #define SDA_PIN 21  // ESP32 I2C SDA
