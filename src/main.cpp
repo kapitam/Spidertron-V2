@@ -10,7 +10,7 @@
 #include <controller.h>
 #include <logicStruct.h>
 #include <logicVaribles.h>
-#include "servoMovement.cpp"
+#include <servoMovement.h>
 
 void setup() {
   Serial.begin(115200);

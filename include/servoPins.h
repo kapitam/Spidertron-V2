@@ -1,6 +1,10 @@
+// servoPins.h - declarations only. Definitions live in src/servoPins.cpp
+#ifndef SERVO_PINS_H
+#define SERVO_PINS_H
+
 #include <Adafruit_PWMServoDriver.h>
 
-//Assign Servo on PWM adafruit
+// Assign Servo on PWM adafruit (pin numbers)
 #define SERVO_PINFR1 0
 #define SERVO_PINFR2 1
 #define SERVO_PINFR3 2
@@ -23,8 +27,10 @@
 #define SDA_PIN 21  // ESP32 I2C SDA
 #define SCL_PIN 22  // ESP32 I2C SCL
 
-const int minPulse = 450;
-const int maxPulse = 2500; 
+// Extern declarations for shared objects defined in a single .cpp
+extern int minPulse;
+extern int maxPulse;
+extern Adafruit_PWMServoDriver pwm1;
+extern Adafruit_PWMServoDriver pwm2;
 
-Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x40);
-Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x41);
+#endif // SERVO_PINS_H

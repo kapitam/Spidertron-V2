@@ -1,4 +1,5 @@
 #include <servoPins.h>
+#include <servoMovement.h>
 
 double translator(double angle) {
   double temp = minPulse + (angle / 180.0) * (maxPulse - minPulse);
