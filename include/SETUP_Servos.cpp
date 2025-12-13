@@ -60,7 +60,7 @@ double translator(double angle) {
 void UpdatePosition(char side, int leg, double A1, double A2, double A3) {
     
     A1 = translator(180 - A1);
-    A2 = translator(A2);
+    A2 = translator(180 - A2);
     A3 = translator(180 - A3);
 
     if (side == 'R') {

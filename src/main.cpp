@@ -12,30 +12,7 @@
 #include <logicVaribles.h>
 #include <servoMovement.h>
 
-void setup() {
-  Serial.begin(115200);
-
-  psx.setupPins(DATA_PIN, CMD_PIN, ATT_PIN, CLOCK_PIN, 10);
-  psx.config(PSXMODE_ANALOG);
-
-  pwm1.begin();
-  pwm1.setPWMFreq(50);
-  pwm2.begin();
-  pwm2.setPWMFreq(50);
-
-  Wire.begin(SDA_PIN, SCL_PIN);  // Initialize I2C
-}
-
-// constraint values for when a motor has went too far, also switches the leg groups
-void constraintReached(double servo1, double servo2, double servo3) {
-  if (servo1 > 120 || servo2 > 180 || servo3 > 100 || servo1 < 30 || servo2 < 110 || servo3 < 44) {
-    constraint = true;
-    Serial.println("----------constraint Tripped----------");
-  }
-}
-
-
-void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
+void CoordinateToAngle(int leg, double X, double Y, double Z) {
 
   Angle target;
 
@@ -57,10 +34,7 @@ void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
   target.A2 = 360 - target.A2;
   }
 
-  if (!legInAir) {
-    constraintReached(target.A1, target.A2, target.A3);
-  }
-  Serial.print("Leg : ");
+  Serial.print("Updating POS Leg : ");
   Serial.print(leg);
   Serial.print(" A1 : ");
   Serial.print(target.A1);
@@ -69,26 +43,27 @@ void CoordinateToAngle(int leg, double X, double Y, double Z, bool legInAir) {
   Serial.print(" A3 : ");
   Serial.println(target.A3);
 
-  if (!constraint) {
-    UpdatePosition(leg, target.A1, target.A2, target.A3);
-      }
+  UpdatePosition(leg, target.A1, target.A2, target.A3);
+  
 }
 
 
 // Pure IK validator that computes angles but does NOT command servos.
 // Returns true if the computed angles are within allowed ranges (i.e. no constraint tripped).
-bool computeAnglesInternal(int leg, double X, double Y, double Z, Angle &target, bool legInAir) {
+bool computeAnglesInternal(int leg, double X, double Y, double Z) {
   // Calculate the length of the hypotenuse
+
+  float A1, A2, A3;
   double N = sqrt((Y * Y) + (X * X)) - D;
   double L = sqrt((Z * Z) + (N * N));
 
-  target.A1 = atan2(Y, X) * (180 / PI) + 90;
+  A1 = atan2(Y, X) * (180 / PI) + 90;
 
   // Defensive clamping for acos arguments to avoid NaN from FP errors
   double acos3_arg = ((J2L * J2L) + (J3L * J3L) - (L * L)) / (2 * J2L * J3L);
   if (acos3_arg > 1.0) acos3_arg = 1.0;
   if (acos3_arg < -1.0) acos3_arg = -1.0;
-  target.A3 = acos(acos3_arg) * (180 / PI);
+  A3 = acos(acos3_arg) * (180 / PI);
 
   double acosB_arg = 0.0;
   if (L > 1e-8) {
@@ -101,19 +76,32 @@ bool computeAnglesInternal(int leg, double X, double Y, double Z, Angle &target,
   }
   double B = acos(acosB_arg) * (180 / PI);
   double A = atan2(Z, N) * (180 / PI);
-  target.A2 = A + B + 90;
+  A2 = A + B + 90;
 
-  if (target.A2 > 180) {
-    target.A2 = 360 - target.A2;
+  if (A2 > 180) {
+    A2 = 360 - A2;
   }
 
-  // If the leg is considered on the ground, run constraint checks (same as original behavior)
-  if (!legInAir) {
-    constraintReached(target.A1, target.A2, target.A3);
-  }
 
-  // Return success if no constraint was tripped
-  return !constraint;
+
+  // run constraint checks (same as original behavior)
+    if (A1 > servo1max || A2 > servo2max || A3 > servo3max ||
+        A1 < servo1min || A2 < servo2min || A3 < servo3min) {
+        constraint = true;
+        Serial.println("----------constraint Tripped----------");
+          Serial.print("Constrained Leg : ");
+          Serial.print(leg);
+          Serial.print(" A1 : ");
+          Serial.print(A1);
+          Serial.print(" A2 : ");
+          Serial.print(A2);
+          Serial.print(" A3 : ");
+          Serial.println(A3);
+        
+      return false; // Constraint tripped
+    } else {
+      return true; // All good
+    }
 }
 
 Leg worldToLocal(const Leg &world, double legAngleDeg, double offset) {
@@ -132,10 +120,11 @@ Leg worldToLocal(const Leg &world, double legAngleDeg, double offset) {
   return local;
 }
 
-void updateLegCoordinates(int legAngleDeg, double x, double y, double z, bool legInAir) {
+bool updateLegCoordinates(int legAngleDeg, double x, double y, double z, bool updateServosOrCheck) {
   Leg worldLegPos = { x, y, z };  // World coordinates
   Leg localCoord = worldToLocal(worldLegPos, legAngleDeg, legOffset);
   int leg = legAngleDeg / 60; // this is range 0-5
+
   // Serial.print("Leg (Angle ");
   // Serial.print(legAngleDeg);
   // Serial.print("°, Leg: ");
@@ -147,7 +136,13 @@ void updateLegCoordinates(int legAngleDeg, double x, double y, double z, bool le
   // Serial.print(localCoord.y, 6);
   // Serial.print(" Z: ");
   // Serial.println(localCoord.z, 6);
-  CoordinateToAngle(leg, localCoord.x, localCoord.y, localCoord.z, legInAir);
+  if (updateServosOrCheck) {
+    CoordinateToAngle(leg, localCoord.x, localCoord.y, localCoord.z);
+  } else {
+    int OK;
+    OK = computeAnglesInternal(leg, localCoord.x, localCoord.y, localCoord.z);
+    return OK;
+  }
 }
 
 // Function to set legs to their rest positions.
@@ -156,7 +151,7 @@ void setRestPositions() {
   float angles[6] = {0, 60, 120, 180, 240, 300};  // degrees for each leg
   leg1.x = REST_DISTANCE * cos(angles[0] * DEG_TO_RAD);
   leg1.y = REST_DISTANCE * sin(angles[0] * DEG_TO_RAD);
-  
+
   leg2.x = REST_DISTANCE * cos(angles[1] * DEG_TO_RAD);
   leg2.y = REST_DISTANCE * sin(angles[1] * DEG_TO_RAD);
   
@@ -179,21 +174,51 @@ void setRestPositions() {
   leg4.z = GROUND_Z;
   leg5.z = GROUND_Z;
   leg6.z = GROUND_Z;
-  // Serial.println("within reset postion function (leg: 1, 2, ...)");
-  // Serial.print("Z :"); Serial.print(leg1.z); Serial.print(" "); Serial.print(leg2.z); Serial.print(" "); Serial.print(leg3.z);
-  // Serial.print(" "); Serial.print(leg4.z); Serial.print(" "); Serial.print(leg5.z); Serial.print(" "); Serial.println(leg6.z);
-  // Serial.print("X :"); Serial.print(leg1.x); Serial.print(" "); Serial.print(leg2.x); Serial.print(" "); Serial.print(leg3.x);
-  // Serial.print(" "); Serial.print(leg4.x); Serial.print(" "); Serial.print(leg5.x); Serial.print(" "); Serial.println(leg6.x);
-  // Serial.print("Y :"); Serial.print(leg1.y); Serial.print(" "); Serial.print(leg2.y); Serial.print(" "); Serial.print(leg3.y);
-  // Serial.print(" "); Serial.print(leg4.y); Serial.print(" "); Serial.print(leg5.y); Serial.print(" "); Serial.println(leg6.y);
+
+
+
+
+  // int leg1x = REST_DISTANCE * cos(angles[0] * DEG_TO_RAD);
+  // int leg1y = REST_DISTANCE * sin(angles[0] * DEG_TO_RAD);
+  // int leg2x = REST_DISTANCE * cos(angles[1] * DEG_TO_RAD);
+  // int leg2y = REST_DISTANCE * sin(angles[1] * DEG_TO_RAD);
+  // int leg3x = REST_DISTANCE * cos(angles[2] * DEG_TO_RAD);
+  // int leg3y = REST_DISTANCE * sin(angles[2] * DEG_TO_RAD);
+  // int leg4x = REST_DISTANCE * cos(angles[3] * DEG_TO_RAD);
+  // int leg4y = REST_DISTANCE * sin(angles[3] * DEG_TO_RAD);
+  // int leg5x = REST_DISTANCE * cos(angles[4] * DEG_TO_RAD);
+  // int leg5y = REST_DISTANCE * sin(angles[4] * DEG_TO_RAD);
+  // int leg6x = REST_DISTANCE * cos(angles[5] * DEG_TO_RAD);
+  // int leg6y = REST_DISTANCE * sin(angles[5] * DEG_TO_RAD);
+
+  // Serial.println("Check Rest:");
+  // Serial.print("LEG  1: "); Serial.print(leg1x); Serial.print(", "); Serial.println(leg1y);
+  // Serial.print("LEG  2: "); Serial.print(leg2x); Serial.print(", "); Serial.println(leg2y);
+  // Serial.print("LEG  3: "); Serial.print(leg3x); Serial.print(", "); Serial.println(leg3y);
+  // Serial.print("LEG  4: "); Serial.print(leg4x); Serial.print(", "); Serial.println(leg4y);
+  // Serial.print("LEG  5: "); Serial.print(leg5x); Serial.print(", "); Serial.println(leg5y);
+  // Serial.print("LEG  6: "); Serial.print(leg6x); Serial.print(", "); Serial.println(leg6y);
+
+
+
+  
+
+  Serial.println("Check World Cooridates:");
+  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   // Write coordinates
-  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
-  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
-  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
-  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
-  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
-  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, true);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, true);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, true);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, true);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, true);
+
 }
 
 void movered(float moveRad, float movemagnitude) {
@@ -224,24 +249,36 @@ void movered(float moveRad, float movemagnitude) {
   // Temporarily clear constraint flag; computeAnglesInternal will set it if needed
   bool prevConstraint = constraint;
   constraint = false;
-  bool ok1 = computeAnglesInternal(0, t1.x, t1.y, t1.z, a1, false);
-  bool ok2 = computeAnglesInternal(1, t2.x, t2.y, t2.z, a2, true);
-  bool ok3 = computeAnglesInternal(2, t3.x, t3.y, t3.z, a3, false);
-  bool ok4 = computeAnglesInternal(3, t4.x, t4.y, t4.z, a4, true);
-  bool ok5 = computeAnglesInternal(4, t5.x, t5.y, t5.z, a5, false);
-  bool ok6 = computeAnglesInternal(5, t6.x, t6.y, t6.z, a6, true);
+  bool ok1 = updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
+  bool ok2 = updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
+  bool ok3 = updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
+  bool ok4 = updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
+  bool ok5 = updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
+  bool ok6 = updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+
+  Serial.println("World Cooridates:");
+  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
 
   if (allOk) {
     // commit tentative positions and apply servo updates
     leg1 = t1; leg2 = t2; leg3 = t3; leg4 = t4; leg5 = t5; leg6 = t6;
-    UpdatePosition(0, a1.A1, a1.A2, a1.A3);
-    UpdatePosition(1, a2.A1, a2.A2, a2.A3);
-    UpdatePosition(2, a3.A1, a3.A2, a3.A3);
-    UpdatePosition(3, a4.A1, a4.A2, a4.A3);
-    UpdatePosition(4, a5.A1, a5.A2, a5.A3);
-    UpdatePosition(5, a6.A1, a6.A2, a6.A3);
+
+    Serial.println("allOK Red moved successfully");
+
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, true);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, true);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, true);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, true);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, true);
+
   } else {
     // If validation failed, restore previous constraint state and do not change positions
     constraint = true; // signal that a move was rejected
@@ -275,24 +312,36 @@ void moveblue(float moveRad, float movemagnitude) {
   Angle a1, a2, a3, a4, a5, a6;
   bool prevConstraint = constraint;
   constraint = false;
-  bool ok1 = computeAnglesInternal(0, t1.x, t1.y, t1.z, a1, true);
-  bool ok2 = computeAnglesInternal(1, t2.x, t2.y, t2.z, a2, false);
-  bool ok3 = computeAnglesInternal(2, t3.x, t3.y, t3.z, a3, true);
-  bool ok4 = computeAnglesInternal(3, t4.x, t4.y, t4.z, a4, false);
-  bool ok5 = computeAnglesInternal(4, t5.x, t5.y, t5.z, a5, true);
-  bool ok6 = computeAnglesInternal(5, t6.x, t6.y, t6.z, a6, false);
+  bool ok1 = updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
+  bool ok2 = updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
+  bool ok3 = updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
+  bool ok4 = updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
+  bool ok5 = updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
+  bool ok6 = updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+
+  Serial.println("World Cooridates:");
+  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
 
   if (allOk) {
     // commit tentative positions and apply servo updates
     leg1 = t1; leg2 = t2; leg3 = t3; leg4 = t4; leg5 = t5; leg6 = t6;
-    UpdatePosition(0, a1.A1, a1.A2, a1.A3);
-    UpdatePosition(1, a2.A1, a2.A2, a2.A3);
-    UpdatePosition(2, a3.A1, a3.A2, a3.A3);
-    UpdatePosition(3, a4.A1, a4.A2, a4.A3);
-    UpdatePosition(4, a5.A1, a5.A2, a5.A3);
-    UpdatePosition(5, a6.A1, a6.A2, a6.A3);
+
+    Serial.println("allOK Blue moved successfully");
+
+  updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
+  updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, true);
+  updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, true);
+  updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, true);
+  updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, true);
+  updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, true);
+
   } else {
     // If validation failed, restore previous constraint state and do not change positions
     constraint = true; // signal that a move was rejected
@@ -337,14 +386,29 @@ void movementRot(float magnitude) {
   // insert stuff here later if want
 }
 
+void setup() {
+  Serial.begin(115200);
+
+  psx.setupPins(DATA_PIN, CMD_PIN, ATT_PIN, CLOCK_PIN, 10);
+  psx.config(PSXMODE_ANALOG);
+
+  pwm1.begin();
+  pwm1.setPWMFreq(50);
+  pwm2.begin();
+  pwm2.setPWMFreq(50);
+
+  Wire.begin(SDA_PIN, SCL_PIN);  // Initialize I2C
+  setRestPositions();
+}
+
 void loop() {
   //start psx
   PSXerror = psx.read(PSXdata);
 
   if(PSXerror == PSXERROR_SUCCESS) {
-  //Serial.print("success");
+  Serial.println("controller success");
   } else {
-  //Serial.print("No success reading data. Check connections and timing.");
+  Serial.print("No success reading data. Check connections and timing.");
   }
 
   int LeftX = PSXdata.JoyLeftX - 128;
@@ -352,6 +416,15 @@ void loop() {
   int RightX = PSXdata.JoyRightX - 128;
   int RightY= PSXdata.JoyRightY - 128;
   //end psx
+
+  Serial.print(",");
+  Serial.print(LeftX);
+  Serial.print(",");
+  Serial.print(LeftY);
+  Serial.print(",");
+  Serial.print(RightX);
+  Serial.print(",");
+  Serial.println(RightY);
 
   //Serial.print("test controller LeftX: ");
   //Serial.print(LeftX);
