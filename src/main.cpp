@@ -34,14 +34,14 @@ void CoordinateToAngle(int leg, double X, double Y, double Z) {
   target.A2 = 360 - target.A2;
   }
 
-  Serial.print("Updating POS Leg : ");
-  Serial.print(leg);
-  Serial.print(" A1 : ");
-  Serial.print(target.A1);
-  Serial.print(" A2 : ");
-  Serial.print(target.A2);
-  Serial.print(" A3 : ");
-  Serial.println(target.A3);
+  // Serial.print("Updating POS Leg : ");
+  // Serial.print(leg);
+  // Serial.print(" A1 : ");
+  // Serial.print(target.A1);
+  // Serial.print(" A2 : ");
+  // Serial.print(target.A2);
+  // Serial.print(" A3 : ");
+  // Serial.println(target.A3);
 
   UpdatePosition(leg, target.A1, target.A2, target.A3);
   
@@ -54,35 +54,21 @@ bool computeAnglesInternal(int leg, double X, double Y, double Z) {
   // Calculate the length of the hypotenuse
 
   float A1, A2, A3;
+
   double N = sqrt((Y * Y) + (X * X)) - D;
   double L = sqrt((Z * Z) + (N * N));
 
   A1 = atan2(Y, X) * (180 / PI) + 90;
 
-  // Defensive clamping for acos arguments to avoid NaN from FP errors
-  double acos3_arg = ((J2L * J2L) + (J3L * J3L) - (L * L)) / (2 * J2L * J3L);
-  if (acos3_arg > 1.0) acos3_arg = 1.0;
-  if (acos3_arg < -1.0) acos3_arg = -1.0;
-  A3 = acos(acos3_arg) * (180 / PI);
-
-  double acosB_arg = 0.0;
-  if (L > 1e-8) {
-    acosB_arg = ((L * L) + (J2L * J2L) - (J3L * J3L)) / (2 * L * J2L);
-    if (acosB_arg > 1.0) acosB_arg = 1.0;
-    if (acosB_arg < -1.0) acosB_arg = -1.0;
-  } else {
-    // Degenerate case: set a safe default to avoid division by zero
-    acosB_arg = 1.0;
-  }
-  double B = acos(acosB_arg) * (180 / PI);
+  // Calculate the angles using inverse kinematics
+  A3 = acos(((J2L * J2L) + (J3L * J3L) - (L * L)) / (2 * J2L * J3L)) * (180 / PI);
+  double B = acos(((L * L) + (J2L * J2L) - (J3L * J3L)) / (2 * L * J2L)) * (180 / PI);
   double A = atan2(Z, N) * (180 / PI);
   A2 = A + B + 90;
 
   if (A2 > 180) {
     A2 = 360 - A2;
   }
-
-
 
   // run constraint checks (same as original behavior)
     if (A1 > servo1max || A2 > servo2max || A3 > servo3max ||
@@ -200,16 +186,14 @@ void setRestPositions() {
   // Serial.print("LEG  6: "); Serial.print(leg6x); Serial.print(", "); Serial.println(leg6y);
 
 
-
-  
-
-  Serial.println("Check World Cooridates:");
-  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
-  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
-  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
-  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
-  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
-  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
+  //CWC
+  // Serial.println("Check World Cooridates:");
+  // Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  // Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  // Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  // Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  // Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  // Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   // Write coordinates
   updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, true);
@@ -249,20 +233,20 @@ void movered(float moveRad, float movemagnitude) {
   // Temporarily clear constraint flag; computeAnglesInternal will set it if needed
   bool prevConstraint = constraint;
   constraint = false;
-  bool ok1 = updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
-  bool ok2 = updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
-  bool ok3 = updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
-  bool ok4 = updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
-  bool ok5 = updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
-  bool ok6 = updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+  bool ok1 = updateLegCoordinates(0, t1.x, t1.y, t1.z, false);
+  bool ok2 = updateLegCoordinates(60, t2.x, t2.y, t2.z, false);
+  bool ok3 = updateLegCoordinates(120, t3.x, t3.y, t3.z, false);
+  bool ok4 = updateLegCoordinates(180, t4.x, t4.y, t4.z, false);
+  bool ok5 = updateLegCoordinates(240, t5.x, t5.y, t5.z, false);
+  bool ok6 = updateLegCoordinates(300, t6.x, t6.y, t6.z, false);
 
-  Serial.println("World Cooridates:");
-  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
-  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
-  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
-  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
-  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
-  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
+  // Serial.println("World Cooridates:");
+  // Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  // Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  // Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  // Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  // Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  // Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
 
@@ -312,20 +296,20 @@ void moveblue(float moveRad, float movemagnitude) {
   Angle a1, a2, a3, a4, a5, a6;
   bool prevConstraint = constraint;
   constraint = false;
-  bool ok1 = updateLegCoordinates(0, leg1.x, leg1.y, leg1.z, false);
-  bool ok2 = updateLegCoordinates(60, leg2.x, leg2.y, leg2.z, false);
-  bool ok3 = updateLegCoordinates(120, leg3.x, leg3.y, leg3.z, false);
-  bool ok4 = updateLegCoordinates(180, leg4.x, leg4.y, leg4.z, false);
-  bool ok5 = updateLegCoordinates(240, leg5.x, leg5.y, leg5.z, false);
-  bool ok6 = updateLegCoordinates(300, leg6.x, leg6.y, leg6.z, false);
+  bool ok1 = updateLegCoordinates(0, t1.x, t1.y, t1.z, false);
+  bool ok2 = updateLegCoordinates(60, t2.x, t2.y, t2.z, false);
+  bool ok3 = updateLegCoordinates(120, t3.x, t3.y, t3.z, false);
+  bool ok4 = updateLegCoordinates(180, t4.x, t4.y, t4.z, false);
+  bool ok5 = updateLegCoordinates(240, t5.x, t5.y, t5.z, false);
+  bool ok6 = updateLegCoordinates(300, t6.x, t6.y, t6.z, false);
 
-  Serial.println("World Cooridates:");
-  Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
-  Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
-  Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
-  Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
-  Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
-  Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
+  // Serial.println("World Cooridates:");
+  // Serial.print("LEG  1: "); Serial.print(leg1.x); Serial.print(", "); Serial.print(leg1.y); Serial.print(", "); Serial.println(leg1.z);
+  // Serial.print("LEG  2: "); Serial.print(leg2.x); Serial.print(", "); Serial.print(leg2.y); Serial.print(", "); Serial.println(leg2.z);
+  // Serial.print("LEG  3: "); Serial.print(leg3.x); Serial.print(", "); Serial.print(leg3.y); Serial.print(", "); Serial.println(leg3.z);
+  // Serial.print("LEG  4: "); Serial.print(leg4.x); Serial.print(", "); Serial.print(leg4.y); Serial.print(", "); Serial.println(leg4.z);
+  // Serial.print("LEG  5: "); Serial.print(leg5.x); Serial.print(", "); Serial.print(leg5.y); Serial.print(", "); Serial.println(leg5.z);
+  // Serial.print("LEG  6: "); Serial.print(leg6.x); Serial.print(", "); Serial.print(leg6.y); Serial.print(", "); Serial.println(leg6.z);
 
   bool allOk = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
 
@@ -367,6 +351,7 @@ void movementXY(float moveRad, float movemagnitude) {
       constraint = false;
       moveblue(moveRad, movemagnitude);
       delay(transdur);
+      Serial.println("Switching to Blue");
     }
   } else {
     moveblue(moveRad, movemagnitude);
@@ -377,6 +362,7 @@ void movementXY(float moveRad, float movemagnitude) {
       constraint = false;
       movered(moveRad, movemagnitude);
       delay(transdur);
+      Serial.println("Switching to Red");
     }
   }
 }
