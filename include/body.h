@@ -4,8 +4,8 @@
 #include "servo_bus.h"
 
 // The interface a motion planner talks to. A planner (the tripod gait today,
-// a ROS node later) sets world-frame foot targets and calls commit(); the
-// body handles IK and servo output and reports whether the pose was reachable.
+// a ROS node later) sets world-frame foot targets, verifies the pose with
+// poseReachable(), and applies it with commit().
 class HexapodBody {
 public:
   void begin();
@@ -14,10 +14,12 @@ public:
   // adjust targets incrementally.
   Vec3 &foot(int leg) { return feet[leg]; }
 
+  // IK-check every current foot target without moving anything. Returns
+  // false (and logs the offending leg) if any joint limit would be hit.
+  bool poseReachable() const;
+
   // Solve IK for all feet and write the servos.
-  // Returns false if any joint limit was hit (legs after the offending one
-  // are not written, so the pose on the robot stays consistent).
-  bool commit();
+  void commit();
 
 private:
   ServoBus servos;

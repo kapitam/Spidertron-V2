@@ -12,7 +12,7 @@ void PsxInput::begin() {
 MoveCommand PsxInput::readMove() {
   int error = psx.read(data);
   if (error != PSXERROR_SUCCESS) {
-    Serial.print("No success reading data. Check connections and timing.");
+    Serial.println("No success reading data. Check connections and timing.");
   }
 
   // Center the sticks around 0 (raw range is 0-255).
@@ -20,10 +20,15 @@ MoveCommand PsxInput::readMove() {
   int y = data.JoyLeftY - 128;
 
 #if DEBUG_LOG
-  Serial.print("LeftX: ");
+  // CSV: leftX, leftY, rightX, rightY (plotter-friendly)
+  Serial.print(",");
   Serial.print(x);
-  Serial.print(" LeftY: ");
-  Serial.println(y);
+  Serial.print(",");
+  Serial.print(y);
+  Serial.print(",");
+  Serial.print(data.JoyRightX - 128);
+  Serial.print(",");
+  Serial.println(data.JoyRightY - 128);
 #endif
 
   MoveCommand cmd;

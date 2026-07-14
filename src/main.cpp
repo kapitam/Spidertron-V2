@@ -9,7 +9,8 @@
 //   input (PsxInput)  ->  planner (TripodGait)  ->  body (IK + limits)
 //                                                     -> servo_bus (PCA9685)
 // To drive this from ROS later, replace PsxInput/TripodGait with a node that
-// sets body.foot(leg) targets and calls body.commit().
+// sets body.foot(leg) targets, checks body.poseReachable(), and calls
+// body.commit().
 
 HexapodBody body;
 TripodGait gait(body);
@@ -17,10 +18,11 @@ PsxInput input;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Begin");
 
   input.begin();
   body.begin();
+
+  gait.rest();
 }
 
 void loop() {

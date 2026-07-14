@@ -4,7 +4,8 @@
 
 // Tripod-gait motion planner. This is the layer to swap out for ROS later:
 // a replacement planner only needs to set body.foot(leg) targets (world
-// frame, cm) and call body.commit() — nothing below this file has to change.
+// frame, cm), check body.poseReachable(), and call body.commit() — nothing
+// below this file has to change.
 //
 // The gait alternates between two tripods:
 //   tripod A = legs 0, 2, 4    tripod B = legs 1, 3, 5
@@ -22,8 +23,8 @@ public:
   void walk(double headingRad, double magnitude);
 
 private:
-  // One gait increment. Returns false (and undoes the position shift) if a
-  // joint limit was hit.
+  // One gait increment, validated before any servo write: if the new pose
+  // would violate a joint limit, nothing moves and this returns false.
   bool step(double headingRad, double magnitude);
 
   bool isStance(int leg) const;

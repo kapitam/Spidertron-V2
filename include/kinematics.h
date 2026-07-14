@@ -4,6 +4,9 @@
 
 // Pure geometry: no hardware access, no global state. Everything a motion
 // planner needs to reason about poses lives here.
+//
+// Coordinate convention: X/Y is the horizontal plane, Z is vertical
+// (negative = below the body).
 
 struct Vec3 {
   double x;
@@ -23,8 +26,7 @@ inline double legMountAngleDeg(int leg) {
   return leg * LEG_MOUNT_STEP_DEG;
 }
 
-// Transform a world-frame foot position into the leg's local frame
-// (undo the mount offset, then rotate by the mount angle).
+// Rotate a world-frame foot position into the leg's local frame.
 Vec3 worldToLocal(const Vec3 &world, double mountAngleDeg);
 
 // Inverse kinematics: foot position in the leg's local frame -> joint angles.

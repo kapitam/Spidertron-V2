@@ -18,6 +18,11 @@ bool TripodGait::step(double headingRad, double magnitude) {
   double dx = cos(headingRad) * magnitude * STEP_SCALE;
   double dy = sin(headingRad) * magnitude * STEP_SCALE;
 
+  Vec3 previous[NUM_LEGS];
+  for (int leg = 0; leg < NUM_LEGS; leg++) {
+    previous[leg] = body.foot(leg);
+  }
+
   for (int leg = 0; leg < NUM_LEGS; leg++) {
     double sign = isStance(leg) ? -1.0 : 1.0;
     Vec3 &foot = body.foot(leg);
@@ -26,27 +31,25 @@ bool TripodGait::step(double headingRad, double magnitude) {
     foot.z = isStance(leg) ? GROUND_Z : AIR_Z;
   }
 
-  bool ok = body.commit();
-
-  // Undo the shift on a failed step so the pose doesn't drift past the
-  // servo limits.
-  if (!ok) {
+  // Validate the whole pose before any servo write: no partial movement.
+  if (!body.poseReachable()) {
     for (int leg = 0; leg < NUM_LEGS; leg++) {
-      double sign = isStance(leg) ? -1.0 : 1.0;
-      body.foot(leg).x -= sign * dx;
-      body.foot(leg).y -= sign * dy;
+      body.foot(leg) = previous[leg];
     }
+    return false;
   }
-  return ok;
+
+  body.commit();
+#if DEBUG_LOG
+  Serial.println(stanceIsB ? "allOK Blue moved successfully"
+                           : "allOK Red moved successfully");
+#endif
+  return true;
 }
 
 void TripodGait::walk(double headingRad, double magnitude) {
   bool ok = step(headingRad, magnitude);
   delay(10);  // stability
-
-#if DEBUG_LOG
-  Serial.println(stanceIsB ? "Blue moving" : "Red moving");
-#endif
 
   if (!ok) {
     // Stance tripod ran out of range: swap tripods and take the first step
@@ -54,5 +57,6 @@ void TripodGait::walk(double headingRad, double magnitude) {
     stanceIsB = !stanceIsB;
     step(headingRad, magnitude);
     delay(TRANSITION_MS);
+    Serial.println(stanceIsB ? "Switching to Blue" : "Switching to Red");
   }
 }
